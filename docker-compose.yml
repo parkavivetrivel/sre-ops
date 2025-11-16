@@ -1,0 +1,194 @@
+version: '3.8'
+ 
+services:
+ 
+  auth-service:
+    build: ./auth-service
+    container_name: auth_service
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+    networks:
+      - app-net
+    ports:
+      - "8001:8000"
+ 
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: dockerfile
+    container_name: order_service
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+    networks:
+      - app-net
+    ports:
+      - "8002:8000"
+ 
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: dockerfile
+    container_name: payment_service
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+    networks:
+      - app-net
+    ports:
+      - "8003:8000"
+ 
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: dockerfile
+    container_name: notification_service
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+    networks:
+      - app-net
+    ports:
+      - "8004:8000"
+ 
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: txdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-net
+ 
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    restart: always
+    volumes:
+      - mongodata:/data/db
+    networks:
+      - app-net
+ 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - app-net
+ 
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - app-net
+ 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 || exit 1"]
+      interval: 10s
+      retries: 5
+ 
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: kibana
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    networks:
+      - app-net
+ 
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.0
+    container_name: logstash
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "5044:5044"
+    networks:
+      - app-net
+ 
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.0
+    container_name: filebeat
+    user: root
+    depends_on:
+      - logstash
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    command: ["-e", "-strict.perms=false"]
+    networks:
+      - app-net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    networks:
+      - app-net
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.2
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - '/:/host:ro'
+    networks:
+      - app-net
+ 
+volumes:
+  pgdata:
+  mongodata:
+  esdata:
+ 
+networks:
+  app-net:
+    driver: bridge
+ 

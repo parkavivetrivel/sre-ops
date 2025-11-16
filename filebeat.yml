@@ -1,0 +1,58 @@
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      templates:
+        - condition:
+            contains:
+              docker.container.name: "auth_service"
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/*/*.log
+              fields:
+                service.name: auth-service
+                event.dataset: auth-service.log
+              fields_under_root: true
+        - condition:
+            contains:
+              docker.container.name: "order_service"
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/*/*.log
+              fields:
+                service.name: order-service
+                event.dataset: order-service.log
+              fields_under_root: true
+        - condition:
+            contains:
+              docker.container.name: "payment_service"
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/*/*.log
+              fields:
+                service.name: payment-service
+                event.dataset: payment-service.log
+              fields_under_root: true
+        - condition:
+            contains:
+              docker.container.name: "notification_service"
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/*/*.log
+              fields:
+                service.name: notification-service
+                event.dataset: notification-service.log
+              fields_under_root: true
+
+processors:
+  - add_docker_metadata: ~
+  - add_host_metadata: ~
+
+filebeat.inputs: []
+
+output.logstash:
+  hosts: ["logstash:5044"]
