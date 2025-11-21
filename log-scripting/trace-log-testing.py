@@ -28,7 +28,9 @@ for user in users:
         "x-user-id": user_id
     }
 
-    # create order
+    # ----------------------------------------
+    # 1️⃣ NORMAL TRANSACTION
+    # ----------------------------------------
     order_id = f"o-{uuid.uuid4().hex[:6]}"
     requests.post(
         f"{ORDERS}/create",
@@ -36,7 +38,6 @@ for user in users:
         headers=headers
     )
 
-    # charge
     payment_id = f"p-{uuid.uuid4().hex[:6]}"
     requests.post(
         f"{PAYMENT}/charge",
@@ -48,6 +49,57 @@ for user in users:
     requests.post(
         f"{NOTIFY}/send",
         json={"to": user_id, "message": f"order {order_id} done"},
+        headers=headers
+    )
+
+    # ----------------------------------------
+    # 2️⃣ INVALID AMOUNT TEST (should trigger InvalidAmount)
+    # ----------------------------------------
+    bad_order_id = f"o-{uuid.uuid4().hex[:6]}"
+    requests.post(
+        f"{ORDERS}/create",
+        json={"id": bad_order_id, "customer_id": user_id, "amount": 0},
+        headers=headers
+    )
+
+    bad_payment_id = f"p-{uuid.uuid4().hex[:6]}"
+    requests.post(
+        f"{PAYMENT}/charge",
+        json={"id": bad_payment_id, "order_id": bad_order_id, "amount": 0},
+        headers=headers
+    )
+
+    # ----------------------------------------
+    # 3️⃣ DUPLICATE TRANSACTION TEST (order_id ends with DUP)
+    # ----------------------------------------
+    dup_order_id = f"o-{uuid.uuid4().hex[:6]}DUP"   # <<< triggers duplicate logic
+    requests.post(
+        f"{ORDERS}/create",
+        json={"id": dup_order_id, "customer_id": user_id, "amount": 150.0},
+        headers=headers
+    )
+
+    dup_payment_id = f"p-{uuid.uuid4().hex[:6]}"
+    requests.post(
+        f"{PAYMENT}/charge",
+        json={"id": dup_payment_id, "order_id": dup_order_id, "amount": 150.0},
+        headers=headers
+    )
+
+    # ----------------------------------------
+    # 4️⃣ FRAUD TEST  (amount > 50000)
+    # ----------------------------------------
+    fraud_order_id = f"o-{uuid.uuid4().hex[:6]}"
+    requests.post(
+        f"{ORDERS}/create",
+        json={"id": fraud_order_id, "customer_id": user_id, "amount": 60000.0},
+        headers=headers
+    )
+
+    fraud_payment_id = f"p-{uuid.uuid4().hex[:6]}"
+    requests.post(
+        f"{PAYMENT}/charge",
+        json={"id": fraud_payment_id, "order_id": fraud_order_id, "amount": 60000.0},
         headers=headers
     )
 
