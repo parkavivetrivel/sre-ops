@@ -58,14 +58,64 @@ async def health(request: Request):
 @app.post("/charge")
 async def charge(request: Request, p: Payment, response: Response):
     # simulate a payment failure sometimes for testing alerts
+        # --------------------------------------------------
+    # 🔴 NON-INFRA (Application / Business) ERRORS
+    # --------------------------------------------------
+
+    # Invalid amount
+    if p.amount <= 0:
+        logger.warning(
+            f"[trace={request.state.trace_id}] [user={request.state.user_id}] "
+            f"event=payment_validation error_type=InvalidAmount order_id={p.order_id} amount={p.amount}"
+        )
+        return {
+            "status": "error",
+            "error_type": "InvalidAmount",
+            "message": "Amount must be greater than zero"
+        }
+
+    # Simulated duplicate transaction (order IDs ending with 'DUP')
+    if p.order_id.endswith("DUP"):
+        logger.warning(
+            f"[trace={request.state.trace_id}] [user={request.state.user_id}] "
+            f"event=payment_validation error_type=DuplicateTransaction order_id={p.order_id} amount={p.amount}"
+        )
+        return {
+            "status": "error",
+            "error_type": "DuplicateTransaction",
+            "message": "This transaction appears to be duplicated"
+        }
+
+    # Fraud detection block simulation (high amount)
+    if p.amount > 50000:
+        logger.warning(
+            f"[trace={request.state.trace_id}] [user={request.state.user_id}] "
+            f"event=payment_validation error_type=FraudBlocked order_id={p.order_id} amount={p.amount}"
+        )
+        return {
+            "status": "error",
+            "error_type": "FraudBlocked",
+            "message": "Transaction flagged by fraud detection system"
+        }
+
+    # --------------------------------------------------
+    # ✅ EXISTING LOGIC (UNCHANGED)
+    # --------------------------------------------------
+
     fail = random.random() < 0.1  # 10% simulated failure
     if fail:
-        logger.error(f"[trace={request.state.trace_id}] [user={request.state.user_id}] Payment failed for order {p.order_id} amount={p.amount}")
+        logger.error(
+            f"[trace={request.state.trace_id}] [user={request.state.user_id}] "
+            f"event=payment_failure error_type=RandomFail order_id={p.order_id} amount={p.amount}"
+        )
         # still return 200 for demo, but include error in body
         response.headers["x-trace-id"] = request.state.trace_id
         return {"status": "failed", "payment_id": p.id}
     else:
-        logger.info(f"[trace={request.state.trace_id}] [user={request.state.user_id}] Charged payment {p.id} for order {p.order_id} amount={p.amount}")
+        logger.info(
+            f"[trace={request.state.trace_id}] [user={request.state.user_id}] "
+            f"event=payment_success error_type=None order_id={p.order_id} amount={p.amount}"
+        )
         response.headers["x-trace-id"] = request.state.trace_id
         return {"status": "ok", "payment_id": p.id, "charged": p.amount}
 
